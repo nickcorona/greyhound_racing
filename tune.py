@@ -329,6 +329,9 @@ print("  Params: ")
 for key, value in best_params.items():
     print(f"    {key}: {value}")
 
+print(dropped_features)
+
+
 lgb.plot_importance(model, grid=False, max_num_features=20, importance_type="gain")
 plt.show()
 

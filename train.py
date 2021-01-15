@@ -9,9 +9,16 @@ df = pd.read_csv(
     parse_dates=[],
     index_col=[],
 )
-TARGET = 'Winner'
-y=df[TARGET]
-X = df.drop([TARGET, 'Finished'], axis=1)
+TARGET = "Winner"
+DROPPED_FEATURES = [
+    "Odds",
+    "Odds_Recent",
+    "Races_380",
+    "Public_Estimate",
+    "Early_Recent",
+]
+y = df[TARGET]
+X = df.drop([TARGET, "Finished", *DROPPED_FEATURES], axis=1)
 d = lgb.Dataset(X, y, silent=True)
 
 NUM_BOOST_ROUND = 439
@@ -34,7 +41,7 @@ params = {
 model = lgb.train(params, d, num_boost_round=NUM_BOOST_ROUND)
 
 Path("figures").mkdir(exist_ok=True)
-lgb.plot_importance(model, grid=False, figsize=(10,5))
+lgb.plot_importance(model, grid=False, figsize=(10, 5))
 plt.savefig("figures/feature_importange.png")
 
 Path("models").mkdir(exist_ok=True)
