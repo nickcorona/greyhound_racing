@@ -11,8 +11,8 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 from helpers import encode_dates, loguniform, similarity_encode
 
 df = pd.read_csv(
-    r"data\openpowerlifting.csv",
-    parse_dates=["Date"],
+    r"data\data_final.csv",
+    parse_dates=[],
     index_col=[],
     delimiter=",",
     low_memory=False,
@@ -24,39 +24,13 @@ print(
     .sort_values(["dtype", "proportion unique"])
 )
 
+TARGET = "Winner"
 ENCODE = False
-CATEGORIZE = True
-TARGET = "Place"
-y = df[TARGET].replace('DQ', 121).astype(int)
+y = df[TARGET]
 X = df.drop(
-    [
-        TARGET,
-        "Place",
-    ],
+    [TARGET, "Finished"],
     axis=1,
 )
-
-unique_plus_classes = set()
-for val in X["WeightClassKg"].astype(str):
-    if val[-1] == "+":
-        unique_plus_classes.add(val)
-float_unique_plus_classes = []
-for weightclass in unique_plus_classes:
-    try:
-        weightclass = float(weightclass[:-1])
-    except ValueError:
-        weightclass = 0
-    float_unique_plus_classes.append(weightclass)
-
-X["WeightClassKg"] = (
-    X["WeightClassKg"]
-    .replace(
-        unique_plus_classes,
-        float_unique_plus_classes,
-    )
-    .astype(float)
-)
-X = encode_dates(X, 'Date')
 
 obj_cols = X.select_dtypes("object").columns
 nunique = X[obj_cols].nunique()
@@ -70,15 +44,16 @@ unique.columns = [
 ]
 unique
 
-X = similarity_encode(
-    X,
-    encode_columns=["Name", "MeetName", "Division", "Federation"],
-    n_prototypes=5,
-    train=True,
-    drop_original=False,
-)
+if ENCODE:
+    X = similarity_encode(
+        X,
+        encode_columns=[],
+        n_prototypes=5,
+        train=True,
+        drop_original=False,
+    )
 
-X[obj_cols] = X[obj_cols].astype('category')
+X[obj_cols] = X[obj_cols].astype("category")
 
 sns.kdeplot(y)
 plt.title("KDE distribution")
@@ -97,8 +72,8 @@ Xs, ys = Xt.loc[sample_idx], yt.loc[sample_idx]
 ds = lgb.Dataset(Xs, ys)
 dv = lgb.Dataset(Xv, yv, free_raw_data=False)
 
-OBJECTIVE = "multiclass"
-METRIC = "multi_logloss"
+OBJECTIVE = "binary"
+METRIC = "binary_logloss"
 MAXIMIZE = False
 EARLY_STOPPING_ROUNDS = 10
 MAX_ROUNDS = 10000
@@ -109,7 +84,7 @@ params = {
     "metric": METRIC,
     "verbose": -1,
     "n_jobs": 6,
-    "num_classes":
+    "num_classes": 1,
     # "tweedie_variance_power": 1.3,
 }
 
@@ -163,15 +138,14 @@ best_eta = rounded_data[best(rounded_data[:, 1]), 0]
 # use log scale as it's easier to observe the whole graph
 sns.lineplot(x=lowess_data[:, 0], y=lowess_data[:, 1])
 plt.xscale("log")
-print(f"Good learning rate: {best_eta:4f}")
 plt.axvline(best_eta, color="orange")
 plt.title("Smoothed relationship between learning rate and metric.")
 plt.xlabel("learning rate")
 plt.ylabel(METRIC)
 plt.show()
 
+print(f"Good learning rate: {best_eta:4f}")
 params["learning_rate"] = best_eta
-
 model = lgb.train(
     params,
     dt,
@@ -233,10 +207,10 @@ if correlation:
             ]  # add to drop_feature the one that reduces score
             best_score = pair_min
             correlated_features.add(drop_feature)
-    print(f"ending score: {best_score:.4f}")
     print(
         f"dropped features: {correlated_features if len(correlated_features) > 0 else None}"
     )
+    print(f"ending score: {best_score:.4f}")
 
     correlation_elimination = len(correlated_features) > 0
     if correlation_elimination:
@@ -256,7 +230,7 @@ if correlation:
             valid_names=["training", "valid"],
             num_boost_round=MAX_ROUNDS,
             early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-            verbose_eval=REPORT_ROUNDS,
+            verbose_eval=False,
         )
 
 sorted_features = [
@@ -355,11 +329,11 @@ print("  Params: ")
 for key, value in best_params.items():
     print(f"    {key}: {value}")
 
-print(f"Dropped features: {dropped_features}")
-
 lgb.plot_importance(model, grid=False, max_num_features=20, importance_type="gain")
 plt.show()
 
 from sklearn.metrics import accuracy_score
 
-accuracy_score(yv, model.predict(Xv, num_iteration=model.best_iteration) > 0.5)
+print(
+    f"Accuracy: {accuracy_score(yv, model.predict(Xv, num_iteration=model.best_iteration) > 0.5):.2%}"
+)
